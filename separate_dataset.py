@@ -57,9 +57,9 @@ if separate_dataset:
         if (i+1) % 100 == 0:
             print(f'test count = {i+1-len_train_data}/{len_dataset-len_train_data}')
         if (i+1) == len_dataset:
+            print(f'train data {len_train_data}, test data {len_dataset-len_train_data}, total {len_dataset}')
             break
 
-    print(f'train data {len_train_data}, test data {len_dataset-len_train_data}, total {len_dataset}')
 
 
 

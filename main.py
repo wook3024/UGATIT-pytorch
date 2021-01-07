@@ -3,11 +3,12 @@ import argparse
 from utils import *
 
 """parsing and configuration"""
-
+# CUDA_VISIBLE_DEVICES=0 FLASK_ENV=development FLASK_APP=app.py flask run
+# CUDA_VISIBLE_DEVICES=0 python main.py --dataset FFHQ_AnimeFaces256Cleaner --phase server_build
 def parse_args():
     desc = "Pytorch implementation of U-GAT-IT"
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--phase', type=str, default='train', help='[train / test]')
+    parser.add_argument('--phase', type=str, default='server_build', help='[train / test / server_build]')
     parser.add_argument('--light', type=str2bool, default=False, help='[U-GAT-IT full version / U-GAT-IT light version]')
     parser.add_argument('--dataset', type=str, default='YOUR_DATASET_NAME', help='dataset_name')
 
@@ -78,6 +79,10 @@ def main():
     if args.phase == 'test' :
         gan.test()
         print(" [*] Test finished!")
+
+    if args.phase == 'server_build' :
+        gan.server_build()
+        print(" [*] Server_build finished!")
 
 if __name__ == '__main__':
     main()

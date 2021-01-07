@@ -1,10 +1,15 @@
 import time, itertools
+import json
 from dataset import ImageFolder
 from torchvision import transforms
 from torch.utils.data import DataLoader
 from networks import *
 from utils import *
 from glob import glob
+from flask import Flask, jsonify, request
+from PIL import Image
+import io
+
 
 class UGATIT(object) :
     def __init__(self, args):
@@ -355,7 +360,8 @@ class UGATIT(object) :
         torch.save(params, os.path.join(dir, self.dataset + '_params_%07d.pt' % step))
 
     def load(self, dir, step):
-        params = torch.load(os.path.join(dir, self.dataset + '_params_%07d.pt' % step))
+        # params = torch.load(os.path.join(dir, self.dataset + '_params_%07d.pt' % step))
+        params = torch.load(os.path.join(dir, self.dataset + '_params_0300000.pt'))
         self.genA2B.load_state_dict(params['genA2B'])
         self.genB2A.load_state_dict(params['genB2A'])
         self.disGA.load_state_dict(params['disGA'])
@@ -412,3 +418,44 @@ class UGATIT(object) :
                                   RGB2BGR(tensor2numpy(denorm(fake_B2A2B[0])))), 0)
 
             cv2.imwrite(os.path.join(self.result_dir, self.dataset, 'test', 'B2A_%d.png' % (n + 1)), B2A * 255.0)
+
+    def server_build(self):
+        app = Flask(__name__)
+
+        model_list = glob(os.path.join(self.result_dir, self.dataset, 'model', '*.pt'))
+        if not len(model_list) == 0:
+            model_list.sort()
+            iter = int(model_list[-1].split('_')[-1].split('.')[0])
+            self.load(os.path.join(self.result_dir, self.dataset, 'model'), iter)
+            print(" [*] Load SUCCESS")
+        else:
+            print(" [*] Load FAILURE")
+            return
+
+        self.genA2B.eval()
+        
+        def transform_image(image_bytes):
+            test_transform = transforms.Compose([
+                transforms.Resize((self.img_size, self.img_size)),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))
+            ])
+            image = Image.open(io.BytesIO(image_bytes))
+            return test_transform(image).unsqueeze(0)
+
+        def get_prediction(image_bytes):
+            tensor = transform_image(image_bytes)
+            tensor = tensor.to(self.device)
+            tensor, _, _ = self.genA2B(tensor)
+            img = tensor2numpy(denorm(tensor[0]))
+            return img * 255.0
+
+        @app.route('/predict', methods=['POST'])
+        def predict():
+            if request.method == 'POST':
+                file = request.files['file']
+                img_bytes = file.read()
+                image = get_prediction(image_bytes=img_bytes).tolist()
+                return json.dumps({"image": image})
+
+        app.run(host="0.0.0.0", port=8000, threaded=False)
