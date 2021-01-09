@@ -444,24 +444,26 @@ class UGATIT(object) :
             image = Image.open(io.BytesIO(image_bytes)).convert('RGB')
             return test_transform(image).unsqueeze(0)
 
-        def get_prediction(image_bytes, ratio_control=0.0, style_control=1.0):
+        def get_prediction(image_bytes, ratio_control_value=0.0, style_control_value=1.0):
             tensor = transform_image(image_bytes)
             tensor = tensor.to(self.device)
-            tensor, _, _ = self.genA2B(tensor, torch.tensor(ratio_control).to(self.device), torch.tensor(style_control).to(self.device))
-            img = tensor2numpy(denorm(tensor[0]))
-            return img * 255.0
+            style_control_value = torch.tensor(style_control_value, device=self.device)
+            ratio_control_value = torch.tensor(ratio_control_value, device=self.device)
+            tensor, _, _ = self.genA2B(tensor, ratio_control_value, style_control_value)
+            image = tensor2numpy(denorm(tensor[0]))
+            return image * 255.0
 
         @app.route('/predict', methods=['POST'])
         def predict():
             if request.method == 'POST':
                 file = request.files
-                ratio_control = file['ratio_control'].read()
-                ratio_control = struct.unpack('f', ratio_control)
-                style_control = file['style_control'].read()
-                style_control = struct.unpack('f', style_control)
+                ratio_control_value = file['ratio_control_value'].read()
+                ratio_control_value = struct.unpack('f', ratio_control_value)
+                style_control_value = file['style_control_value'].read()
+                style_control_value = struct.unpack('f', style_control_value)
                 image = file['image']
                 image_bytes = image.read()
-                image = get_prediction(image_bytes=image_bytes, ratio_control=ratio_control, style_control=style_control).tolist()
+                image = get_prediction(image_bytes=image_bytes, style_control_value=style_control_value).tolist()
                 return json.dumps({"image": image})
 
         app.run(host="0.0.0.0", port=8000, threaded=False)
