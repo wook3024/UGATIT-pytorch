@@ -37,6 +37,7 @@ class ResnetGenerator(nn.Module):
         # Class Activation Map
         self.gap_fc = nn.Linear(ngf * mult, 1, bias=False)
         self.gmp_fc = nn.Linear(ngf * mult, 1, bias=False)
+        # conv1*1(concat(gap_fc, gmp_fc))
         self.conv1x1 = nn.Conv2d(ngf * mult * 2, ngf * mult, kernel_size=1, stride=1, bias=True)
         self.relu = nn.ReLU(True)
 
@@ -76,7 +77,7 @@ class ResnetGenerator(nn.Module):
         self.FC = nn.Sequential(*FC)
         self.UpBlock2 = nn.Sequential(*UpBlock2)
 
-    def forward(self, input):
+    def forward(self, input, ratio_control, style_control):
         x = self.DownBlock(input)
 
         gap = torch.nn.functional.adaptive_avg_pool2d(x, 1)
@@ -104,7 +105,7 @@ class ResnetGenerator(nn.Module):
 
 
         for i in range(self.n_blocks):
-            x = getattr(self, 'UpBlock1_' + str(i+1))(x, gamma, beta)
+            x = getattr(self, 'UpBlock1_' + str(i+1))(x, gamma, beta, ratio_control, style_control)
         out = self.UpBlock2(x)
 
         return out, cam_logit, heatmap
@@ -128,8 +129,6 @@ class ResnetBlock(nn.Module):
     def forward(self, x):
         out = x + self.conv_block(x)
         return out
-
-
 class ResnetAdaILNBlock(nn.Module):
     def __init__(self, dim, use_bias):
         super(ResnetAdaILNBlock, self).__init__()
@@ -141,15 +140,16 @@ class ResnetAdaILNBlock(nn.Module):
         self.pad2 = nn.ReflectionPad2d(1)
         self.conv2 = nn.Conv2d(dim, dim, kernel_size=3, stride=1, padding=0, bias=use_bias)
         self.norm2 = adaILN(dim)
+        # 여기는 왜 relu를 안하니??
 
-    def forward(self, x, gamma, beta):
+    def forward(self, x, gamma, beta, ratio_control, style_control):
         out = self.pad1(x)
         out = self.conv1(out)
-        out = self.norm1(out, gamma, beta)
+        out = self.norm1(out, gamma, beta, ratio_control, style_control)
         out = self.relu1(out)
         out = self.pad2(out)
         out = self.conv2(out)
-        out = self.norm2(out, gamma, beta)
+        out = self.norm2(out, gamma, beta, ratio_control, style_control)
 
         return out + x
 
@@ -161,13 +161,13 @@ class adaILN(nn.Module):
         self.rho = Parameter(torch.Tensor(1, num_features, 1, 1))
         self.rho.data.fill_(0.9)
 
-    def forward(self, input, gamma, beta):
+    def forward(self, input, gamma, beta, ratio_control, style_control):
         in_mean, in_var = torch.mean(input, dim=[2, 3], keepdim=True), torch.var(input, dim=[2, 3], keepdim=True)
         out_in = (input - in_mean) / torch.sqrt(in_var + self.eps)
         ln_mean, ln_var = torch.mean(input, dim=[1, 2, 3], keepdim=True), torch.var(input, dim=[1, 2, 3], keepdim=True)
         out_ln = (input - ln_mean) / torch.sqrt(ln_var + self.eps)
-        out = self.rho.expand(input.shape[0], -1, -1, -1) * out_in + (1-self.rho.expand(input.shape[0], -1, -1, -1)) * out_ln
-        out = out * gamma.unsqueeze(2).unsqueeze(3) + beta.unsqueeze(2).unsqueeze(3)
+        out = (self.rho.expand(input.shape[0], -1, -1, -1)+ratio_control) * out_in + (1-(self.rho.expand(input.shape[0], -1, -1, -1))-ratio_control) * out_ln
+        out = out * (gamma.unsqueeze(2).unsqueeze(3)*style_control) + beta.unsqueeze(2).unsqueeze(3)
 
         return out
 
